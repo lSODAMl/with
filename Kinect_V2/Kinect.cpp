@@ -1,6 +1,5 @@
 #include "Kinect.h"
 using namespace cv;
-int pos[3];
 
 Kinect::Kinect()
 {
@@ -109,7 +108,12 @@ void Kinect::UpdateInfo()
 
 		if (SUCCEEDED(hr))
 		{
+			// In order to see the full range of depth (including the less reliable far field depth)
+			// we are setting nDepthMaxDistance to the extreme potential depth threshold
 			nDepthMaxDistance = USHRT_MAX;
+
+			// Note:  If you wish to filter by reliable depth distance, uncomment the following line.
+			//// hr = pDepthFrame->get_DepthMaxReliableDistance(&nDepthMaxDistance);
 		}
 
 		if (SUCCEEDED(hr))
@@ -129,6 +133,7 @@ void Kinect::UpdateInfo()
 	SafeRelease(pDepthFrame);
 }
 
+int pos[3];
 void onMouse(int event, int x, int y, int flags, void*param)
 {
 	if (event == EVENT_LBUTTONDOWN) {
@@ -210,6 +215,7 @@ void Kinect::ProcessDepth(const UINT16* pBuffer, int nWidth, int nHeight, USHORT
 		// Draw the data with OpenCV
 		Mat DepthImage(nHeight, nWidth, CV_8UC4, m_pDepthRGBX);
 		Mat bImage;
+
 		HandDetection(&DepthImage, &bImage);
 
 		medianBlur(DepthImage, DepthImage, 9);
@@ -282,77 +288,77 @@ void Kinect::SetStandardDepth(UINT16 depth)
 	standard_depth = depth; std::cout << depth << std::endl;
 }
 
+
+
 void Kinect::HandDetection(Mat *DepthImage, Mat *inRangeImage)
 {
 	int inAngleMin = 200, inAngleMax = 300, angleMin = 180, angleMax = 359, lengthMin = 10, lengthMax = 80;
 
-	Scalar lowerb(0, 242, 255);
-	Scalar upperb(0, 242, 255);
+	Scalar lowerb(0, 255, 153);
+	Scalar upperb(0, 255, 153);
 	inRange(*DepthImage, lowerb, upperb, *inRangeImage);
 	erode(*inRangeImage, *inRangeImage, Mat());
 	dilate(*inRangeImage, *inRangeImage, cv::Mat(), Point(-1, -1), 2);
-
+	imshow("aa", *inRangeImage);
 	std::vector<std::vector<cv::Point>> contours_f;
 	std::vector<cv::Vec4i> hierarchy;
 	cv::findContours(*inRangeImage, contours_f, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
 	size_t largestContour = 0;
-	for (size_t i = 1; i < contours_f.size(); i++)
-	{
-		if (cv::contourArea(contours_f[i]) > cv::contourArea(contours_f[largestContour]))
-			largestContour = i;
-	}
 
-	cv::drawContours(*inRangeImage, contours_f, largestContour, cv::Scalar(255, 0, 0), 1);
 
-	//convex hull
-	if (!contours_f.empty())
-	{
-		//calculate the convex hull of largest contour(in order to speed the process)
-		std::vector<std::vector<cv::Point>> hull(1);
-		cv::convexHull(cv::Mat(contours_f[largestContour]), hull[0], false);
-		cv::drawContours(*inRangeImage, hull, 0, cv::Scalar(255, 0, 0), 2);
+	if (contours_f.size() != 0) {
+		int idx = 0, largestComp = 0;
+		double maxArea = 0;
 
-		//use convexDefects function.
-		//The "convexDefects" will try to approximate those gaps using straight lines.
-		//we can then use that information to fine the points where our fingertips are placed.
-
-		if (hull[0].size() > 2)
+		for (; idx >= 0; idx = hierarchy[idx][0])
 		{
-			std::vector<int> hullIndexes;
-			cv::convexHull(cv::Mat(contours_f[largestContour]), hullIndexes, true);
-			std::vector<cv::Vec4i> convexityDefects;
-			cv::convexityDefects(cv::Mat(contours_f[largestContour]), hullIndexes, convexityDefects);
-
-			//pointer filtering
-			cv::Rect boundingBox = cv::boundingRect(hull[0]);
-			cv::rectangle(*inRangeImage, boundingBox, cv::Scalar(255, 0, 0));
-			cv::Point center = cv::Point(boundingBox.x + boundingBox.width / 2, boundingBox.y + boundingBox.height / 2);
-			std::vector<cv::Point> validPoints;
-
-			for (size_t i = 0; i < convexityDefects.size(); i++)
+			const std::vector<Point>& c = contours_f[idx];
+			double area = fabs(contourArea(Mat(c))); //contourArea(contours[idx]),
+			//std::cout << "area: " <<area << std::endl;
+			if (area > maxArea)
 			{
-				cv::Point p1 = contours_f[largestContour][convexityDefects[i][0]];
-				cv::Point p2 = contours_f[largestContour][convexityDefects[i][1]];
-				cv::Point p3 = contours_f[largestContour][convexityDefects[i][2]];
-				double angle = std::atan2(center.y - p1.y, center.x - p1.x) * 180 / CV_PI;
-				double inAngle = innerAngle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
-				double length = std::sqrt(std::pow(p1.x - p3.x, 2) + std::pow(p1.y - p3.y, 2));
-				if (angle > angleMin - 180 && angle < angleMax - 180 && inAngle > inAngleMin - 180 && inAngle < inAngleMax - 180 && length > lengthMin / 100.0 * boundingBox.height && length < lengthMax / 100.0 * boundingBox.height)
-				{
-					validPoints.push_back(p1);
-				}
-			}
-			for (size_t i = 0; i < validPoints.size(); i++)
-			{
-				cv::circle(*inRangeImage, validPoints[i], 9, cv::Scalar(255, 255, 255), 3);
+				maxArea = area;
+				largestComp = idx;
 
-				imshow("Hand", *inRangeImage);
-				std::cout << validPoints.size() << std::endl;
 			}
-
 		}
+
+		std::cout << "Max area: " << maxArea << std::endl;
+		drawContours(*inRangeImage, contours_f, largestComp, Scalar(255, 0, 255), 2, 8, hierarchy);
+		float radius = 0;
+
+
+		Rect r0 = boundingRect(Mat(contours_f[largestComp]));
+		if (maxArea > 5000 && maxArea < 7000)
+		{
+			rectangle(*inRangeImage, r0, Scalar(255, 0, 0), 2);
+			rectangle(*DepthImage, r0, Scalar(0, 255, 0), 2);  //Draw rectangle in image
+		}
+
+
+
+		int dx, dy;
+		dx = r0.x + r0.width / 2;
+		dy = r0.y + r0.height / 2;
+		Point center(dx, dy);
+
+		std::ostringstream foo(std::ostringstream::ate);
+
+		foo.str("center is");
+		foo << dx << "," << dy;
+
+
+		circle(*inRangeImage, center, 1, Scalar(255, 0, 0), 5);
+
+		//cv::putText(image, foo.str(), center, FONT_HERSHEY_SIMPLEX, 1, 1);
+		putText(*DepthImage, foo.str(), center, FONT_HERSHEY_SIMPLEX, 1, Scalar::all(0), 1, 8);
+		namedWindow("Contour", 0);
+		imshow("Contour", *inRangeImage);
+
+		imshow("Source", *DepthImage);
 	}
 }
+
 
 float Kinect::innerAngle(float px1, float py1, float px2, float py2, float cx1, float cy1)
 {

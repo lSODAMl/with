@@ -1,9 +1,9 @@
 #pragma once
-#include "opencv2/opencv.hpp"
 #include <windows.h>
-#include <Kinect.h>// Kinect Header files
+#include <Kinect.h>
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
+#include "opencv2/opencv.hpp"
 
 using namespace cv;
 
@@ -14,10 +14,10 @@ public:
 	~Kinect();
 
 public:
-	void        CalculateDepth(const UINT16* pBuffer, int nWidth, int nHeight, USHORT nMinDepth, USHORT nMaxDepth);
 	void		InitKinect();
 	void		UpdateInfo();
 	void        ProcessDepth(const UINT16* pBuffer, int nWidth, int nHeight, USHORT nMinDepth, USHORT nMaxDepth);
+	void        CalculateDepth(const UINT16* pBuffer, int nWidth, int nHeight, USHORT nMinDepth, USHORT nMaxDepth);
 	void		SetDepthRGB(RGBQUAD* pRGBX, USHORT depth);
 	void		HandDetection(Mat *depth, Mat *inRangeImage);
 	template<class Interface>
@@ -28,7 +28,7 @@ public:
 
 
 public:
-	static const int        cDepthWidth  = 512;
+	static const int        cDepthWidth = 512;
 	static const int        cDepthHeight = 424;
 
 private:
