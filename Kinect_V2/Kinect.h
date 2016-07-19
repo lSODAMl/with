@@ -22,10 +22,9 @@ public:
 	void		HandDetection(Mat *depth, Mat *inRangeImage);
 	template<class Interface>
 	void		SafeRelease(Interface *& pInterfaceToRelease);
-	float		innerAngle(float px1, float py1, float px2, float py2, float cx1, float cy1);
 	UINT16      GetStandardDepth() { return standard_depth; };
 	void		SetStandardDepth(UINT16 depth);
-
+	void Kinect::ShowContourDepthImage(Mat *depthImage);
 
 public:
 	static const int        cDepthWidth = 512;

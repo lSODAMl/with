@@ -213,24 +213,12 @@ void Kinect::ProcessDepth(const UINT16* pBuffer, int nWidth, int nHeight, USHORT
 		}
 
 		// Draw the data with OpenCV
-		Mat DepthImage(nHeight, nWidth, CV_8UC4, m_pDepthRGBX);
-		Mat bImage;
+		Mat depthImage(nHeight, nWidth, CV_8UC4, m_pDepthRGBX);
+		Mat inRangeImage;
 
-		HandDetection(&DepthImage, &bImage);
+		HandDetection(&depthImage, &inRangeImage);
+		ShowContourDepthImage(&depthImage);
 
-		medianBlur(DepthImage, DepthImage, 9);
-
-		Mat edge, draw;
-		Canny(DepthImage, edge, 50, 150, 3);
-		edge.convertTo(draw, CV_8U);
-
-
-		std::vector<std::vector<cv::Point>> contours;
-		findContours(draw, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
-		drawContours(DepthImage, contours, -1, Scalar(0, 0, 0), 3);
-
-		Mat show = DepthImage.clone();
-		imshow("DepthImage", show);
 	}
 }
 
@@ -290,20 +278,20 @@ void Kinect::SetStandardDepth(UINT16 depth)
 
 
 
-void Kinect::HandDetection(Mat *DepthImage, Mat *inRangeImage)
+void Kinect::HandDetection(Mat *depthImage, Mat *inRangeImage)
 {
 	int inAngleMin = 200, inAngleMax = 300, angleMin = 180, angleMax = 359, lengthMin = 10, lengthMax = 80;
 
 	Scalar lowerb(0, 255, 153);
 	Scalar upperb(0, 255, 153);
-	inRange(*DepthImage, lowerb, upperb, *inRangeImage);
+	inRange(*depthImage, lowerb, upperb, *inRangeImage);
 	erode(*inRangeImage, *inRangeImage, Mat());
 	dilate(*inRangeImage, *inRangeImage, cv::Mat(), Point(-1, -1), 2);
-	imshow("aa", *inRangeImage);
+	//imshow("white", *inRangeImage);
+	Mat temp = *inRangeImage;
 	std::vector<std::vector<cv::Point>> contours_f;
 	std::vector<cv::Vec4i> hierarchy;
 	cv::findContours(*inRangeImage, contours_f, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
-	size_t largestContour = 0;
 
 
 	if (contours_f.size() != 0) {
@@ -325,77 +313,68 @@ void Kinect::HandDetection(Mat *DepthImage, Mat *inRangeImage)
 
 		std::cout << "Max area: " << maxArea << std::endl;
 		drawContours(*inRangeImage, contours_f, largestComp, Scalar(255, 0, 255), 2, 8, hierarchy);
-		float radius = 0;
-
 
 		Rect r0 = boundingRect(Mat(contours_f[largestComp]));
-		if (maxArea > 5000 && maxArea < 7000)
-		{
-			rectangle(*inRangeImage, r0, Scalar(255, 0, 0), 2);
-			rectangle(*DepthImage, r0, Scalar(0, 255, 0), 2);  //Draw rectangle in image
-		}
+
+		rectangle(*inRangeImage, r0, Scalar(255, 0, 0), 2);
+		rectangle(*depthImage, r0, Scalar(0, 255, 0), 2);  //Draw rectangle in image
 
 
+
+
+		Point2f points[4];
+		Point2f center;
+		float radius;
+		Rect rect;
+		RotatedRect rotate_rect;
+
+		//compute the bounding rect, rotated bounding rect, minum enclosing circle.
+		rect = boundingRect(contours_f[largestComp]);
+		rotate_rect = minAreaRect(contours_f[largestComp]);
+		minEnclosingCircle(contours_f[largestComp], center, radius);
+		rotate_rect.points(points);
+
+		std::vector< std::vector< Point> > polylines;
+		polylines.resize(1);
+		for (int j = 0; j < 4; ++j)
+			polylines[0].push_back(points[j]);
+
+		//draw them on the bounding image.
+		cv::polylines(*depthImage, polylines, true, Scalar(0, 255, 0), 2);
 
 		int dx, dy;
 		dx = r0.x + r0.width / 2;
 		dy = r0.y + r0.height / 2;
-		Point center(dx, dy);
 
+		Point centerHand(dx, dy);
+		std::cout << "x : " << dx << "y : " << dy << std::endl;
 		std::ostringstream foo(std::ostringstream::ate);
-
 		foo.str("center is");
 		foo << dx << "," << dy;
-
 
 		circle(*inRangeImage, center, 1, Scalar(255, 0, 0), 5);
 
 		//cv::putText(image, foo.str(), center, FONT_HERSHEY_SIMPLEX, 1, 1);
-		putText(*DepthImage, foo.str(), center, FONT_HERSHEY_SIMPLEX, 1, Scalar::all(0), 1, 8);
+		putText(*depthImage, foo.str(), centerHand, FONT_HERSHEY_SIMPLEX, 1, Scalar::all(0), 1, 8);
 		namedWindow("Contour", 0);
-		imshow("Contour", *inRangeImage);
 
-		imshow("Source", *DepthImage);
+		imshow("Contour", *inRangeImage);
+		imshow("Source", *depthImage);
 	}
+
+
 }
 
-
-float Kinect::innerAngle(float px1, float py1, float px2, float py2, float cx1, float cy1)
+void Kinect::ShowContourDepthImage(Mat *depthImage)
 {
-	float dist1 = std::sqrt((px1 - cx1)*(px1 - cx1) + (py1 - cy1)*(py1 - cy1));
-	float dist2 = std::sqrt((px2 - cx1)*(px2 - cx1) + (py2 - cy1)*(py2 - cy1));
+	medianBlur(*depthImage, *depthImage, 9);
+	Mat edge, draw;
+	Canny(*depthImage, edge, 50, 150, 3);
+	edge.convertTo(draw, CV_8U);
+	std::vector<std::vector<cv::Point>> contours;
+	findContours(draw, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+	drawContours(*depthImage, contours, -1, Scalar(0, 0, 0), 3);
 
-	float Ax, Ay;
-	float Bx, By;
-	float Cx, Cy;
-
-	//find closest point to C  
-	//printf("dist = %lf %lf\n", dist1, dist2);  
-
-	Cx = cx1;
-	Cy = cy1;
-	if (dist1 < dist2)
-	{
-		Bx = px1;
-		By = py1;
-		Ax = px2;
-		Ay = py2;
-	}
-	else {
-		Bx = px2;
-		By = py2;
-		Ax = px1;
-		Ay = py1;
-	}
-
-	float Q1 = Cx - Ax;
-	float Q2 = Cy - Ay;
-	float P1 = Bx - Ax;
-	float P2 = By - Ay;
-
-	float A = std::acos((P1*Q1 + P2*Q2) / (std::sqrt(P1*P1 + P2*P2) * std::sqrt(Q1*Q1 + Q2*Q2)));
-
-	A = A * 180 / CV_PI;
-
-	return A;
+	Mat show = (*depthImage).clone();
+	imshow("DepthImage", show);
 }
